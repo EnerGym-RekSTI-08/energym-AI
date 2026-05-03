@@ -9,14 +9,17 @@ description = "EnerGym Edge AI module - pose estimation & form validation for gy
 authors = [{name = "Kelompok 8 - II3240"}]
 requires-python = ">=3.10"
 dependencies = [
-    "mediapipe>=0.10.14",
-    "opencv-python>=4.10.0",
-    "numpy>=1.26.0",
+    "mediapipe>=0.10.30",
+    "opencv-python>=4.8.0",
+    "numpy>=1.26.0,<2.0.0",
     "pyserial>=3.5",
-    "requests>=2.32.0",
+    "requests>=2.31.0",
     "pyyaml>=6.0",
     "python-dotenv>=1.0.0",
     "loguru>=0.7.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "supabase>=2.10.0",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +29,10 @@ dev = [
     "black>=24.0",
     "ruff>=0.7",
 ]
+
+[project.scripts]
+energym-server = "energym_ai.server:run_server"
+energym-run    = "energym_ai.run:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
