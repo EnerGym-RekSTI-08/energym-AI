@@ -1,0 +1,63 @@
+camera:
+  source: 0            
+  width: 640             
+  height: 480
+  target_fps: 24         #
+
+mediapipe:
+  model_complexity: 1 
+  min_detection_confidence: 0.6
+  min_tracking_confidence: 0.5
+  smooth_landmarks: true
+
+# ---------- BICEP CURL (Standar) ----------
+exercises:
+  bicep_curl:
+    display_name: "Bicep Curl Standar"
+    primary_joint: "elbow"      
+    landmarks:
+      shoulder: 12              
+      elbow: 14                
+      wrist: 16                 
+      hip: 24                   
+
+    angle_thresholds:
+      down_position: 160        
+      up_position: 50           
+
+    form_rules:
+      max_body_sway: 15        
+      max_elbow_drift: 25       
+      min_rom_angle: 90        
+
+    tempo:
+      min_concentric: 0.8       
+      min_eccentric: 1.0        
+
+  hammer_curl:
+    display_name: "Hammer Curl"
+    primary_joint: "elbow"
+    landmarks: { shoulder: 12, elbow: 14, wrist: 16, hip: 24 }
+    angle_thresholds: { down_position: 160, up_position: 55 }
+    form_rules: { max_body_sway: 15, max_elbow_drift: 25, min_rom_angle: 90 }
+    tempo: { min_concentric: 0.8, min_eccentric: 1.0 }
+
+# ---------- OUTPUT ----------
+output:
+  esp32:
+    enabled: false
+    mode: "serial"               
+    serial_port: "/dev/ttyUSB0"  
+    baudrate: 115200
+    alert_cooldown_sec: 1.5      
+
+  cloud:
+    enabled: false
+    endpoint: "https://api.energym.local/v1/sessions"
+    api_key_env: "ENERGYM_API_KEY"
+    sync_interval_sec: 30       
+    fallback_local_dir: "./data/offline_queue"
+
+logging:
+  level: "INFO"
+  file: "./logs/energym_ai.log"
