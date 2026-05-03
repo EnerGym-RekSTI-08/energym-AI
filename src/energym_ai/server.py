@@ -17,7 +17,6 @@ from .utils.config import load_config
 
 app = FastAPI(title="EnerGym AI Server", version="0.1.0")
 
-# Izinkan request dari Expo dev server (semua origin untuk dev)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,17 +25,13 @@ app.add_middleware(
 )
 
 cfg = load_config()
-
-# ─── Session registry ────────────────────────────────────────────────────────
-# session_id → dict berisi info sesi aktif
 active_sessions: dict[str, dict] = {}
 
-# ─── Pydantic models ─────────────────────────────────────────────────────────
 class StartSessionRequest(BaseModel):
     user_id: str
     station_id: str
-    exercise_id: str        # id dari tabel 'exercises' di Supabase
-    exercise_name: str      # untuk display & config lookup
+    exercise_id: str      
+    exercise_name: str 
     workout_id: Optional[str] = None
 
 class StopSessionRequest(BaseModel):
@@ -45,10 +40,6 @@ class StopSessionRequest(BaseModel):
 
 # ─── Helper: jalankan pipeline AI di background thread ───────────────────────
 def _run_pipeline(session_id: str, request: StartSessionRequest) -> None:
-    """
-    Jalankan webcam + MediaPipe + analyzer di thread terpisah.
-    Kirim update ke semua WebSocket yang subscribe ke session_id ini.
-    """
     session = active_sessions.get(session_id)
     if not session:
         return
@@ -123,7 +114,6 @@ def _run_pipeline(session_id: str, request: StartSessionRequest) -> None:
 
 
 async def _broadcast(session_id: str, message: dict) -> None:
-    """Kirim pesan ke semua WebSocket yang subscribe ke session ini."""
     session = active_sessions.get(session_id)
     if not session:
         return
@@ -144,11 +134,7 @@ def health():
 
 
 @app.post("/session/start")
-def start_session(request: StartSessionRequest):
-    """
-    Mobile memanggil ini saat user menekan tombol 'Start' di LiveWorkoutScreen.
-    Return: session_id yang dipakai untuk WebSocket.
-    """
+async def start_session(request: StartSessionRequest):
     session_id = str(uuid.uuid4())[:8]
     loop = asyncio.new_event_loop()
 
@@ -175,8 +161,7 @@ def start_session(request: StartSessionRequest):
 
 
 @app.post("/session/stop")
-def stop_session(request: StopSessionRequest):
-    """Mobile memanggil ini saat user menekan tombol 'Stop'."""
+async def stop_session(request: StopSessionRequest):
     session = active_sessions.get(request.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session tidak ditemukan")
@@ -187,8 +172,7 @@ def stop_session(request: StopSessionRequest):
 
 
 @app.get("/session/{session_id}/status")
-def get_status(session_id: str):
-    """Polling fallback jika WebSocket tidak tersedia."""
+async def get_status(session_id: str):
     session = active_sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session tidak ditemukan")
@@ -198,12 +182,6 @@ def get_status(session_id: str):
 # ─── WebSocket Endpoint ───────────────────────────────────────────────────────
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
-    """
-    Mobile connect ke sini untuk terima live rep count + bad form alert.
-    Format pesan:
-      { type: 'frame_update', rep_count: 5, state: 'down', is_bad_form: false, ... }
-      { type: 'session_ended', valid_reps: 12, bad_reps: 3, accuracy: 0.8 }
-    """
     await websocket.accept()
 
     session = active_sessions.get(session_id)
@@ -228,7 +206,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
 
 def run_server():
-    """Entry point untuk: energym-server (setelah pip install -e .)"""
     import uvicorn
     uvicorn.run(
         "energym_ai.server:app",
