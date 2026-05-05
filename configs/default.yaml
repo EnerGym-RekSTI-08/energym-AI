@@ -13,7 +13,7 @@ mediapipe:
 # ---------- BICEP CURL (Standar) ----------
 exercises:
   bicep_curl:
-    display_name: "Bicep Curl Standar"
+    display_name: "Bicep Curl"
     primary_joint: "elbow"      
     landmarks:
       shoulder: 12              
@@ -34,13 +34,50 @@ exercises:
       min_concentric: 0.8       
       min_eccentric: 1.0        
 
+# ---------- ALTERNATING DUMBBELL CURL ----------
+  alternating_curl:
+    display_name: "Alternating Dumbbell Curl"
+    primary_joint: "elbow"
+    landmarks:
+      right_shoulder: 12
+      right_elbow: 14
+      right_wrist: 16
+      right_hip: 24
+      left_shoulder: 11
+      left_elbow: 13
+      left_wrist: 15
+      left_hip: 23
+    angle_thresholds:
+      down_position: 160
+      up_position: 50
+    form_rules:
+      max_body_sway: 15
+      max_elbow_drift: 25
+      min_rom_angle: 90
+    tempo:
+      min_concentric: 0.8
+      min_eccentric: 1.0
+
+# ---------- HAMMER CURL ----------
   hammer_curl:
     display_name: "Hammer Curl"
     primary_joint: "elbow"
-    landmarks: { shoulder: 12, elbow: 14, wrist: 16, hip: 24 }
-    angle_thresholds: { down_position: 160, up_position: 55 }
-    form_rules: { max_body_sway: 15, max_elbow_drift: 25, min_rom_angle: 90 }
-    tempo: { min_concentric: 0.8, min_eccentric: 1.0 }
+    landmarks:
+      shoulder: 12
+      elbow: 14
+      wrist: 16
+      hip: 24
+    angle_thresholds:
+      down_position: 160
+      up_position: 55
+    form_rules:
+      max_body_sway: 15
+      max_elbow_drift: 25
+      min_rom_angle: 90
+      max_wrist_deviation: 30
+    tempo:
+      min_concentric: 0.8
+      min_eccentric: 1.0
 
 # ---------- OUTPUT ----------
 output:

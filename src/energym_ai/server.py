@@ -14,6 +14,8 @@ from loguru import logger
 
 from .core.pose_detector import PoseDetector
 from .exercises.bicep_curl import BicepCurlAnalyzer
+from .exercises.alternating_curl import AlternatingCurlAnalyzer
+from .exercises.hammer_curl import HammerCurlAnalyzer
 from .output.esp32_alert import create_alert_sender
 from .output.supabase_sync import SupabaseSync
 from .utils.config import load_config
@@ -33,11 +35,88 @@ latest_frame: bytes | None = None
 latest_frame_ts: float | None = None
 main_event_loop: asyncio.AbstractEventLoop | None = None
 
+# Mapping exercise_name → (config_key, AnalyzerClass)
+_EXERCISE_MAP: dict[str, tuple[str, type]] = {
+    "Bicep Curl": ("bicep_curl", BicepCurlAnalyzer),
+    "bicep_curl": ("bicep_curl", BicepCurlAnalyzer),
+    "Alternating Dumbbell Curl": ("alternating_curl", AlternatingCurlAnalyzer),
+    "alternating_curl": ("alternating_curl", AlternatingCurlAnalyzer),
+    "Hammer Curl": ("hammer_curl", HammerCurlAnalyzer),
+    "hammer_curl": ("hammer_curl", HammerCurlAnalyzer),
+}
+
+# ── Shared camera & detector (warmup system) ──────────────────────────
+_shared_lock = threading.Lock()
+_shared_cap: cv2.VideoCapture | None = None
+_shared_detector: PoseDetector | None = None
+_shared_warmup_ts: float | None = None      # waktu terakhir warmup / dipakai
+_IDLE_TIMEOUT_SEC = 300                      # auto-release setelah 5 menit idle
+
+
+def _warmup_camera() -> tuple[cv2.VideoCapture, PoseDetector]:
+    global _shared_cap, _shared_detector, _shared_warmup_ts
+    with _shared_lock:
+        # Detector
+        if _shared_detector is None:
+            logger.info("[warmup] Initializing PoseDetector...")
+            _shared_detector = PoseDetector(**cfg["mediapipe"])
+            logger.info("[warmup] PoseDetector ready.")
+
+        # Camera
+        if _shared_cap is None or not _shared_cap.isOpened():
+            logger.info("[warmup] Opening camera...")
+            _shared_cap = cv2.VideoCapture(cfg["camera"]["source"])
+            _shared_cap.set(cv2.CAP_PROP_FRAME_WIDTH, cfg["camera"]["width"])
+            _shared_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cfg["camera"]["height"])
+            # Baca 1 frame dummy untuk flush buffer internal driver
+            _shared_cap.read()
+            logger.info("[warmup] Camera ready.")
+
+        _shared_warmup_ts = time.time()
+        return _shared_cap, _shared_detector
+
+
+def _release_shared() -> None:
+    global _shared_cap, _shared_detector, _shared_warmup_ts
+    with _shared_lock:
+        if _shared_cap is not None:
+            _shared_cap.release()
+            _shared_cap = None
+            logger.info("[warmup] Camera released.")
+        if _shared_detector is not None:
+            _shared_detector.close()
+            _shared_detector = None
+            logger.info("[warmup] Detector released.")
+        _shared_warmup_ts = None
+
+
+def _idle_watcher() -> None:
+    while True:
+        time.sleep(30)
+        with _shared_lock:
+            if (
+                _shared_warmup_ts
+                and _shared_cap is not None
+                and not active_sessions
+                and (time.time() - _shared_warmup_ts) > _IDLE_TIMEOUT_SEC
+            ):
+                pass  # will release below
+            else:
+                continue
+        # Release di luar lock untuk hindari deadlock
+        _release_shared()
+        logger.info("[warmup] Idle timeout → resources released.")
+
+
+threading.Thread(target=_idle_watcher, daemon=True).start()
+
 
 @app.on_event("startup")
-async def _capture_event_loop() -> None:
+async def _on_startup() -> None:
     global main_event_loop
     main_event_loop = asyncio.get_running_loop()
+    threading.Thread(target=_warmup_camera, daemon=True).start()
+    logger.info("[startup] Warmup triggered in background.")
 
 
 def _safe_broadcast(session_id: str, message: dict) -> None:
@@ -67,19 +146,34 @@ class StopSessionRequest(BaseModel):
 
 
 def _run_pipeline(session_id: str, request: StartSessionRequest) -> None:
-    global latest_frame, latest_frame_ts
+    global latest_frame, latest_frame_ts, _shared_warmup_ts
     session = active_sessions.get(session_id)
     if not session:
         return
 
-    ex_cfg = cfg["exercises"].get("bicep_curl")
-    detector = PoseDetector(**cfg["mediapipe"])
-    analyzer = BicepCurlAnalyzer(ex_cfg)
-    alerter = create_alert_sender(cfg)
+    # Resolve exercise analyzer dari exercise_name
+    mapping = _EXERCISE_MAP.get(request.exercise_name)
+    if mapping is None:
+        mapping = _EXERCISE_MAP.get("bicep_curl")
+        logger.warning(
+            f"[{session_id}] exercise_name '{request.exercise_name}' tidak dikenal, "
+            f"fallback ke bicep_curl"
+        )
 
-    cap = cv2.VideoCapture(cfg["camera"]["source"])
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, cfg["camera"]["width"])
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cfg["camera"]["height"])
+    config_key, AnalyzerClass = mapping
+    ex_cfg = cfg["exercises"].get(config_key)
+    if ex_cfg is None:
+        logger.error(f"[{session_id}] Config '{config_key}' tidak ditemukan")
+        session["running"] = False
+        session["error"] = "config_not_found"
+        _safe_broadcast(session_id, {"type": "error", "message": f"Config '{config_key}' tidak ditemukan"})
+        return
+
+    # Pakai shared camera + detector (sudah pre-warmed)
+    cap, detector = _warmup_camera()
+    analyzer = AnalyzerClass(ex_cfg)
+    alerter = create_alert_sender(cfg)
+    logger.info(f"[{session_id}] Using analyzer: {AnalyzerClass.__name__} (config: {config_key})")
 
     if not cap.isOpened():
         logger.error(f"[{session_id}] Kamera tidak bisa dibuka")
@@ -136,6 +230,9 @@ def _run_pipeline(session_id: str, request: StartSessionRequest) -> None:
                 "is_bad_form": analysis.is_bad_form,
                 "form_issues": analysis.form_issues,
             }
+            # Tambah info active_arm untuk alternating curl
+            if hasattr(analysis, "active_arm"):
+                ws_message["active_arm"] = analysis.active_arm
             session["latest_data"] = ws_message
 
             _safe_broadcast(session_id, ws_message)
@@ -157,11 +254,10 @@ def _run_pipeline(session_id: str, request: StartSessionRequest) -> None:
     session["summary"] = summary
     logger.info(f"[{session_id}] Pipeline stopped. Summary: {summary}")
 
-    cap.release()
-    detector.close()
     alerter.close()
     latest_frame = None
     latest_frame_ts = None
+    _shared_warmup_ts = time.time()  # reset idle timer
 
     syncer = SupabaseSync(cfg)
     syncer.push(
@@ -194,7 +290,20 @@ async def _broadcast(session_id: str, message: dict) -> None:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "active_sessions": len(active_sessions)}
+    cam_ready = _shared_cap is not None and _shared_cap.isOpened()
+    det_ready = _shared_detector is not None
+    return {
+        "status": "ok",
+        "active_sessions": len(active_sessions),
+        "camera_ready": cam_ready,
+        "detector_ready": det_ready,
+    }
+
+
+@app.post("/camera/warmup")
+async def warmup_camera():
+    threading.Thread(target=_warmup_camera, daemon=True).start()
+    return {"status": "warming_up"}
 
 
 @app.post("/session/start")

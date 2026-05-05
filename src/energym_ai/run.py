@@ -7,9 +7,17 @@ from loguru import logger
 
 from .core.pose_detector import PoseDetector
 from .exercises.bicep_curl import BicepCurlAnalyzer
+from .exercises.alternating_curl import AlternatingCurlAnalyzer
+from .exercises.hammer_curl import HammerCurlAnalyzer
 from .output.esp32_alert import create_alert_sender
 from .output.cloud_sync import CloudSync
 from .utils.config import load_config
+
+_ANALYZER_MAP = {
+    "bicep_curl": BicepCurlAnalyzer,
+    "alternating_curl": AlternatingCurlAnalyzer,
+    "hammer_curl": HammerCurlAnalyzer,
+}
 
 
 def _draw_overlay(frame, analysis, fps: float) -> None:
@@ -48,7 +56,8 @@ def run(args: argparse.Namespace) -> int:
         return 1
 
     detector = PoseDetector(**cfg["mediapipe"])
-    analyzer = BicepCurlAnalyzer(ex_cfg)
+    AnalyzerClass = _ANALYZER_MAP[args.exercise]
+    analyzer = AnalyzerClass(ex_cfg)
     alerter = create_alert_sender(cfg)
     cloud = CloudSync(cfg)
 
@@ -97,7 +106,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="EnerGym AI Pipeline Runner")
     parser.add_argument("--config", default="configs/default.yaml")
     parser.add_argument("--exercise", default="bicep_curl",
-                        choices=["bicep_curl", "hammer_curl"])
+                        choices=["bicep_curl", "alternating_curl", "hammer_curl"])
     parser.add_argument("--user-id", required=True, help="ID user dari mobile app")
     parser.add_argument("--station-id", default="STATION_01")
     args = parser.parse_args()
