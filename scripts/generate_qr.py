@@ -1,4 +1,6 @@
 import json
+import os
+import re
 import socket
 import argparse
 
@@ -14,6 +16,76 @@ def get_local_ip() -> str:
         s.close()
 
 
+def _supabase_client():
+    """Buat Supabase client dari .env atau environment variable."""
+    try:
+        from supabase import create_client
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        print("[WARN] supabase / python-dotenv belum terinstall. Skip DB check.")
+        return None
+
+    url = os.getenv("SUPABASE_URL", "")
+    key = os.getenv("SUPABASE_SERVICE_KEY", "")
+    if not url or not key:
+        print("[WARN] SUPABASE_URL / SUPABASE_SERVICE_KEY tidak ditemukan. Skip DB check.")
+        return None
+
+    return create_client(url, key)
+
+
+def resolve_station_id(client, requested_id: str) -> str:
+    """
+    Cek apakah station_code sudah ada di DB.
+    Jika sudah ada, auto-increment suffix angkanya.
+    Contoh: STATION_01 sudah ada → coba STATION_02, dst.
+    Kembalikan station_id yang aman untuk dipakai.
+    """
+    if client is None:
+        return requested_id
+
+    try:
+        resp = client.table("stations").select("station_code").execute()
+        existing = {row["station_code"] for row in (resp.data or [])}
+    except Exception as e:
+        print(f"[WARN] Gagal query stations: {e}. Pakai ID yang diminta.")
+        return requested_id
+
+    if requested_id not in existing:
+        return requested_id
+
+    # Pisahkan prefix dan angka: "STATION_01" → prefix="STATION_", num=1
+    match = re.match(r"^(.*?)(\d+)$", requested_id)
+    if not match:
+        # Tidak ada angka di akhir — tambahkan _02
+        match = re.match(r"^(.*?)(\d+)$", requested_id + "01")
+        prefix, num_str = requested_id + "_", "01"
+    else:
+        prefix, num_str = match.group(1), match.group(2)
+
+    pad = len(num_str)
+    num = int(num_str)
+
+    while True:
+        num += 1
+        candidate = f"{prefix}{str(num).zfill(pad)}"
+        if candidate not in existing:
+            print(f"[INFO] '{requested_id}' sudah ada, pakai '{candidate}'")
+            return candidate
+
+
+def insert_station(client, station_code: str) -> None:
+    """INSERT station baru ke tabel stations."""
+    if client is None:
+        return
+    try:
+        client.table("stations").insert({"station_code": station_code}).execute()
+        print(f"[DB] Station '{station_code}' berhasil disimpan ke database.")
+    except Exception as e:
+        print(f"[WARN] Gagal INSERT station ke DB: {e}")
+
+
 def generate(station_id: str, port: int, output: str) -> None:
     try:
         import qrcode
@@ -22,21 +94,23 @@ def generate(station_id: str, port: int, output: str) -> None:
         print("Install dulu: pip install qrcode[pil] pillow")
         return
 
+    # ── Cek DB & resolve station_id ──────────────────────────────────────
+    client = _supabase_client()
+    final_station_id = resolve_station_id(client, station_id)
+
     ip = get_local_ip()
 
-    # Payload yang di-encode ke QR
-    # Mobile app akan parse JSON ini setelah scan
     payload = json.dumps({
-        "station_id": station_id,
+        "station_id": final_station_id,
         "ip": ip,
         "port": port,
     })
 
     print(f"IP yang terdeteksi : {ip}")
-    print(f"Station ID         : {station_id}")
+    print(f"Station ID         : {final_station_id}")
     print(f"QR Payload         : {payload}")
 
-    # Generate QR
+    # ── Generate QR ──────────────────────────────────────────────────────
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_H,
@@ -61,7 +135,7 @@ def generate(station_id: str, port: int, output: str) -> None:
     except Exception:
         font = ImageFont.load_default()
 
-    text = f"EnerGym Station: {station_id}"
+    text = f"EnerGym Station: {final_station_id}"
     bbox = draw.textbbox((0, 0), text, font=font)
     text_w = bbox[2] - bbox[0]
     draw.text(((w - text_w) // 2, h + 10), text, fill="#FF6500", font=font)
@@ -69,6 +143,10 @@ def generate(station_id: str, port: int, output: str) -> None:
 
     final.save(output)
     print(f"\nQR berhasil dibuat: {output}")
+
+    # ── Simpan station ke DB setelah QR sukses dibuat ─────────────────────
+    insert_station(client, final_station_id)
+
     print("Cetak file ini dan tempel di alat gym.")
     print("\nPERINGATAN: Pastikan HP dan laptop di WiFi yang SAMA saat latihan!")
 
