@@ -43,23 +43,23 @@ class StationStatusManager:
 
     def on_server_start(self) -> None:
         """Call once when the FastAPI server starts. Marks station online."""
-        self._update({"status": "online", "current_workout_id": None})
+        self._update({"status": "ONLINE", "current_workout_id": None})
         self._start_heartbeat()
-        logger.info(f"[StationStatus] Station '{self.station_code}' marked online.")
+        logger.info(f"[StationStatus] Station '{self.station_code}' marked ONLINE.")
 
     def on_server_stop(self) -> None:
         """Call once when the FastAPI server shuts down. Marks station offline."""
         self._stop_event.set()
-        self._update({"status": "offline", "current_workout_id": None})
-        logger.info(f"[StationStatus] Station '{self.station_code}' marked offline.")
+        self._update({"status": "OFFLINE", "current_workout_id": None})
+        logger.info(f"[StationStatus] Station '{self.station_code}' marked OFFLINE.")
 
     def on_session_start(self, workout_id: str | None = None) -> None:
-        """Call when an AI session begins. Marks station busy."""
-        self._update({"status": "busy", "current_workout_id": workout_id})
+        """Call when an AI session begins. current_workout_id tracks busyness."""
+        self._update({"current_workout_id": workout_id})
 
     def on_session_stop(self) -> None:
-        """Call when an AI session ends. Marks station online (idle)."""
-        self._update({"status": "online", "current_workout_id": None})
+        """Call when an AI session ends. Clears current_workout_id."""
+        self._update({"current_workout_id": None})
 
     def update_hardware_status(
         self,
