@@ -223,7 +223,7 @@ def _run_pipeline(session_id: str, request: StartSessionRequest) -> None:
             detector.draw(draw_frame, pose)
 
             # Encode ke JPEG dan simpan ke global untuk /stream/snapshot
-            _, buffer = cv2.imencode('.jpg', draw_frame, [cv2.IMWRITE_JPEG_QUALITY, 65])
+            _, buffer = cv2.imencode('.jpg', draw_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             latest_frame = buffer.tobytes()
             latest_frame_ts = time.time()
 
