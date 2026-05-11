@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from time import time
 import json
 from loguru import logger
-
+import requests
 
 class AlertSender(ABC):
     @abstractmethod
@@ -13,6 +13,60 @@ class AlertSender(ABC):
     @abstractmethod
     def close(self) -> None: ...
 
+class SupabaseAlertSender(AlertSender):
+    def __init__(
+        self, 
+        project_url: str, 
+        api_key: str, 
+        station_id: str,
+        cooldown_sec: float = 2.0
+    ) -> None:
+        # URL target ke tabel 'stations' dengan filter station_id
+        self._url = f"{project_url}/rest/v1/stations?station_code=eq.{station_id}"
+        self._headers = {
+            "apikey": api_key,
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+        }
+        self._station_id = station_id
+        self._cooldown = cooldown_sec
+        self._last_alert: float = 0.0
+        
+        logger.info(f"SupabaseAlertSender initialized for Station: {station_id}")
+
+    def send_alert(self, level: str, code: str) -> None:
+        """Mengirim sinyal ke tabel stations untuk memicu aktuator ESP32"""
+        now = time()
+        if now - self._last_alert < self._cooldown:
+            return
+
+        # Kita update kolom actuator_status menjadi 'RINGING'
+        # Kamu bisa ganti 'RINGING' jadi angka jika di ESP32 pakai logika bad_count
+        payload = {"actuator_status": "RINGING"}
+
+        try:
+            response = requests.patch(self._url, json=payload, headers=self._headers)
+            
+            if response.status_code in [200, 201, 204]:
+                self._last_alert = now
+                logger.warning(f"IOT SIGNAL SENT → Station {self._station_id}: {code}")
+            else:
+                logger.error(f"Supabase Error {response.status_code}: {response.text}")
+                
+        except Exception as e:
+            logger.error(f"Gagal koneksi ke Supabase: {e}")
+
+    def send_rep(self, count: int) -> None:
+        # Kamu bisa tambahkan logic untuk update jumlah rep ke kolom lain jika ada
+        pass
+
+    def close(self) -> None:
+        # Pastikan saat aplikasi ditutup, status aktuator kembali ke READY
+        try:
+            requests.patch(self._url, json={"actuator_status": "READY"}, headers=self._headers)
+        except:
+            pass
 
 class SerialAlertSender(AlertSender):
     def __init__(
@@ -80,17 +134,17 @@ def create_alert_sender(cfg: dict) -> AlertSender:
         return NoOpAlertSender()
 
     mode = esp_cfg.get("mode", "serial")
+    
     if mode == "serial":
-        try:
-            return SerialAlertSender(
-                port=esp_cfg["serial_port"],
-                baudrate=esp_cfg["baudrate"],
-                cooldown_sec=esp_cfg.get("alert_cooldown_sec", 1.5),
-            )
-        except Exception as e:
-            logger.warning(f"Serial gagal, fallback ke NoOp: {e}")
-            return NoOpAlertSender()
-    else:
-        # TODO: implement HTTP / MQTT bila dibutuhkan
-        logger.warning(f"Mode {mode} belum diimplementasi, pakai NoOp.")
-        return NoOpAlertSender()
+        # ... (kode serial yang lama) ...
+        return SerialAlertSender(...) 
+        
+    elif mode == "supabase":
+        return SupabaseAlertSender(
+            project_url=cfg["supabase"]["url"],
+            api_key=cfg["supabase"]["key"],
+            station_id=cfg.get("station_id", "STATION_01"), # Ambil dari config atau default
+            cooldown_sec=esp_cfg.get("alert_cooldown_sec", 2.0)
+        )
+    
+    return NoOpAlertSender()

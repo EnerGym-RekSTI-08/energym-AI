@@ -80,10 +80,14 @@ exercises:
       min_eccentric: 1.0
 
 # ---------- OUTPUT ----------
+supabase:
+  url: "https://hzxjzksqxrosgnpernih.supabase.co"
+  key: "sb_publishable_BZx1BlGXxLPANelKyVE9cg__fsS9f8f"
+
 output:
   esp32:
-    enabled: false
-    mode: "serial"               
+    enabled: true
+    mode: "supabase"               
     serial_port: "/dev/ttyUSB0"  
     baudrate: 115200
     alert_cooldown_sec: 1.5      

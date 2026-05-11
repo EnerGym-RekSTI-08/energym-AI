@@ -86,6 +86,7 @@ class BicepCurlAnalyzer:
 
             if issues:
                 self.bad_rep_count += 1
+                self.trigger_iot_alert(issues[0])
             else:
                 self.rep_count += 1
 
@@ -101,6 +102,10 @@ class BicepCurlAnalyzer:
             is_bad_form=len(issues) > 0,
             form_issues=issues,
         )
+
+    def trigger_iot_alert(self, issue_code):
+        if hasattr(self, 'alerter'):
+            self.alerter.send_alert(level="warn", code=issue_code)
 
     def session_summary(self) -> dict:
         duration = time() - self.session_start

@@ -94,6 +94,7 @@ class AlternatingCurlAnalyzer:
 
             if issues:
                 self.bad_rep_count += 1
+                self.trigger_iot_alert(issues[0])
             else:
                 if side == "left":
                     self.rep_count_left += 1
@@ -173,6 +174,10 @@ class AlternatingCurlAnalyzer:
             active_arm=active,
             form_issues=issues,
         )
+    
+    def trigger_iot_alert(self, issue_code):
+        if hasattr(self, 'alerter'):
+            self.alerter.send_alert(level="warn", code=issue_code)
 
     def session_summary(self) -> dict:
         duration = time() - self.session_start
