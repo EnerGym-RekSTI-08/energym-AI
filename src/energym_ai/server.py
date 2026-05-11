@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import os
 import threading
 import time
 import uuid
@@ -18,6 +19,7 @@ from .exercises.alternating_curl import AlternatingCurlAnalyzer
 from .exercises.hammer_curl import HammerCurlAnalyzer
 from .output.esp32_alert import create_alert_sender
 from .output.supabase_sync import SupabaseSync
+from .output.station_status import StationStatusManager
 from .utils.config import load_config
 
 app = FastAPI(title="EnerGym AI Server", version="0.1.0")
@@ -34,6 +36,9 @@ active_sessions: dict[str, dict] = {}
 latest_frame: bytes | None = None
 latest_frame_ts: float | None = None
 main_event_loop: asyncio.AbstractEventLoop | None = None
+
+_station_code = os.getenv("ENERGYM_STATION_ID", "STATION_01")
+station_status = StationStatusManager(_station_code)
 
 # Mapping exercise_name → (config_key, AnalyzerClass)
 _EXERCISE_MAP: dict[str, tuple[str, type]] = {
@@ -116,7 +121,13 @@ async def _on_startup() -> None:
     global main_event_loop
     main_event_loop = asyncio.get_running_loop()
     threading.Thread(target=_warmup_camera, daemon=True).start()
+    threading.Thread(target=station_status.on_server_start, daemon=True).start()
     logger.info("[startup] Warmup triggered in background.")
+
+
+@app.on_event("shutdown")
+async def _on_shutdown() -> None:
+    threading.Thread(target=station_status.on_server_stop, daemon=False).start()
 
 
 def _safe_broadcast(session_id: str, message: dict) -> None:
@@ -259,6 +270,8 @@ def _run_pipeline(session_id: str, request: StartSessionRequest) -> None:
     latest_frame_ts = None
     _shared_warmup_ts = time.time()  # reset idle timer
 
+    station_status.on_session_stop()
+
     syncer = SupabaseSync(cfg)
     syncer.push(
         user_id=request.user_id,
@@ -322,6 +335,7 @@ async def start_session(request: StartSessionRequest):
     thread.start()
     active_sessions[session_id]["thread"] = thread
     logger.info(f"Session {session_id} started for user {request.user_id}")
+    station_status.on_session_start(workout_id=request.workout_id)
     return {"session_id": session_id, "status": "started"}
 
 
