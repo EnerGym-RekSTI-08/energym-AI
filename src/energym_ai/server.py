@@ -236,12 +236,12 @@ def _run_pipeline(session_id: str, request: StartSessionRequest) -> None:
                 "type": "frame_update",
                 "session_id": session_id,
                 "rep_count": analysis.rep_count,
+                "bad_rep_count": getattr(analysis, "bad_rep_count", None),
                 "state": analysis.state.value,
                 "elbow_angle": round(analysis.elbow_angle, 1) if analysis.elbow_angle else None,
                 "is_bad_form": analysis.is_bad_form,
                 "form_issues": analysis.form_issues,
             }
-            # Tambah info active_arm untuk alternating curl
             if hasattr(analysis, "active_arm"):
                 ws_message["active_arm"] = analysis.active_arm
             session["latest_data"] = ws_message

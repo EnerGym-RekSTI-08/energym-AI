@@ -93,11 +93,15 @@ class PoseDetector:
             output_segmentation_masks=False,
         )
         self._detector = mp_vision.PoseLandmarker.create_from_options(options)
+        self._last_ts: int = 0
 
     def process(self, frame_bgr: np.ndarray) -> PoseResult:
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         ts_ms = int(time.time() * 1000)
+        if ts_ms <= self._last_ts:
+            ts_ms = self._last_ts + 1
+        self._last_ts = ts_ms
         result = self._detector.detect_for_video(mp_image, ts_ms)
 
         if not result.pose_landmarks:

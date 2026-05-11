@@ -1,38 +1,45 @@
 camera:
-  source: 0            
-  width: 640             
+  source: 0
+  width: 640
   height: 480
-  target_fps: 24         #
+  target_fps: 24
 
 mediapipe:
-  model_complexity: 1 
+  model_complexity: 1
   min_detection_confidence: 0.6
   min_tracking_confidence: 0.5
   smooth_landmarks: true
 
-# ---------- BICEP CURL (Standar) ----------
 exercises:
+
+# ---------- BICEP CURL (Bilateral — kedua tangan bersamaan) ----------
   bicep_curl:
     display_name: "Bicep Curl"
-    primary_joint: "elbow"      
+    primary_joint: "elbow"
     landmarks:
-      shoulder: 12              
-      elbow: 14                
-      wrist: 16                 
-      hip: 24                   
+      right_shoulder: 12
+      right_elbow:    14
+      right_wrist:    16
+      right_hip:      24
+      left_shoulder:  11
+      left_elbow:     13
+      left_wrist:     15
+      left_hip:       23
 
     angle_thresholds:
-      down_position: 160        
-      up_position: 50           
+      down_position: 160
+      up_position:   50
 
     form_rules:
-      max_body_sway: 15        
-      max_elbow_drift: 25       
-      min_rom_angle: 90        
+      max_body_sway:                  15
+      max_elbow_drift:                25
+      max_elbow_height_over_shoulder: 0.02
+      min_rom_angle:                  90
+      sync_window_sec:                2.5
 
     tempo:
-      min_concentric: 0.8       
-      min_eccentric: 1.0        
+      min_concentric: 0.8   # Minimum durasi fase angkat (detik)
+      min_eccentric:  1.0   # Minimum durasi fase turun (detik)
 
 # ---------- ALTERNATING DUMBBELL CURL ----------
   alternating_curl:
@@ -40,44 +47,55 @@ exercises:
     primary_joint: "elbow"
     landmarks:
       right_shoulder: 12
-      right_elbow: 14
-      right_wrist: 16
-      right_hip: 24
-      left_shoulder: 11
-      left_elbow: 13
-      left_wrist: 15
-      left_hip: 23
+      right_elbow:    14
+      right_wrist:    16
+      right_hip:      24
+      left_shoulder:  11
+      left_elbow:     13
+      left_wrist:     15
+      left_hip:       23
+
     angle_thresholds:
       down_position: 160
-      up_position: 50
+      up_position:   50
+
     form_rules:
-      max_body_sway: 15
-      max_elbow_drift: 25
-      min_rom_angle: 90
+      max_body_sway:    15
+      max_elbow_drift:  25
+      min_rom_angle:    90
+      min_arm_gap_sec:  1.0  # Jeda minimum antar rep kiri/kanan (detik)
+
     tempo:
       min_concentric: 0.8
-      min_eccentric: 1.0
+      min_eccentric:  1.0
 
-# ---------- HAMMER CURL ----------
+# ---------- HAMMER CURL (Bilateral, neutral grip) ----------
   hammer_curl:
     display_name: "Hammer Curl"
     primary_joint: "elbow"
     landmarks:
-      shoulder: 12
-      elbow: 14
-      wrist: 16
-      hip: 24
+      right_shoulder: 12
+      right_elbow:    14
+      right_wrist:    16
+      right_hip:      24
+      left_shoulder:  11
+      left_elbow:     13
+      left_wrist:     15
+      left_hip:       23
+
     angle_thresholds:
       down_position: 160
-      up_position: 55
+      up_position:   55
+
     form_rules:
-      max_body_sway: 15
+      max_body_sway:   15
       max_elbow_drift: 25
-      min_rom_angle: 90
-      max_wrist_deviation: 30
+      min_rom_angle:   90
+      sync_window_sec: 2.5
+
     tempo:
       min_concentric: 0.8
-      min_eccentric: 1.0
+      min_eccentric:  1.0
 
 # ---------- OUTPUT ----------
 supabase:
@@ -87,16 +105,16 @@ supabase:
 output:
   esp32:
     enabled: true
-    mode: "supabase"               
-    serial_port: "/dev/ttyUSB0"  
+    mode: "supabase"
+    serial_port: "/dev/ttyUSB0"
     baudrate: 115200
-    alert_cooldown_sec: 1.5      
+    alert_cooldown_sec: 1.5
 
   cloud:
     enabled: false
     endpoint: "https://api.energym.local/v1/sessions"
     api_key_env: "ENERGYM_API_KEY"
-    sync_interval_sec: 30       
+    sync_interval_sec: 30
     fallback_local_dir: "./data/offline_queue"
 
 logging:
